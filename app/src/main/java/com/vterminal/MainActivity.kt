@@ -16,7 +16,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.vterminal.engine.*
 import java.io.*
 
 class MainActivity : AppCompatActivity() {
@@ -27,16 +26,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressText: TextView
     private lateinit var cancelBtn: Button
     private lateinit var progressLayout: LinearLayout
-    private lateinit var themeBtn: Button
 
     private var shellProcess: Process? = null
     private var shellInput: OutputStream? = null
     private var shellOutput: Thread? = null
     private var extractThread: Thread? = null
+    private var extractProcess: Process? = null
     private var selectedImageUri: Uri? = null
-    private val extractionEngine = ExtractionEngine(this)
-    private var currentThemeIndex = 0
-    private val themeList = ThemeEngine.getThemeNames()
 
     private val permissionRequestCode = 100
     private val pickFileCode = 102
@@ -57,51 +53,17 @@ class MainActivity : AppCompatActivity() {
         progressText = findViewById(R.id.progressText)
         cancelBtn = findViewById(R.id.cancelBtn)
         progressLayout = findViewById(R.id.progressLayout)
-        themeBtn = findViewById(R.id.themeBtn)
 
         sendBtn.setOnClickListener { sendCommand() }
         settingsBtn.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         cancelBtn.setOnClickListener { cancelExtraction() }
         browseBtn.setOnClickListener { browseImageFile() }
-        themeBtn.setOnClickListener { cycleTheme() }
         terminalInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) { sendCommand(); true } else false
         }
 
         createNotificationChannel()
         requestPermissions()
-        applyTheme()
-    }
-
-    private fun cycleTheme() {
-        currentThemeIndex = (currentThemeIndex + 1) % themeList.size
-        ThemeEngine.setTheme(themeList[currentThemeIndex])
-        applyTheme()
-        appendOutput("[THEME] Switched to: ${ThemeEngine.getCurrentTheme().name}\n")
-    }
-
-    private fun applyTheme() {
-        val theme = ThemeEngine.getCurrentTheme()
-        terminalOutput.apply {
-            setTextColor(theme.textColor)
-            textSize = theme.fontSize
-            setBackgroundColor(theme.bgColor)
-        }
-        terminalInput.apply {
-            setTextColor(theme.textColor)
-            setHintTextColor(darken(theme.textColor, 0.4f))
-        }
-        scrollView.setBackgroundColor(theme.bgColor)
-        progressLayout.setBackgroundColor(theme.progressBgColor)
-        progressText.setTextColor(theme.accentColor)
-        progressBar.progressTintList = android.content.res.ColorStateList.valueOf(theme.progressFgColor)
-    }
-
-    private fun darken(color: Int, factor: Float): Int {
-        val r = ((color shr 16) and 0xFF) * factor
-        val g = ((color shr 8) and 0xFF) * factor
-        val b = (color and 0xFF) * factor
-        return (0xFF shl 24) or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
     }
 
     private fun browseImageFile() {
@@ -119,7 +81,7 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == pickFileCode && resultCode == RESULT_OK && data != null) {
             selectedImageUri = data.data
-            appendOutput("[FILE] Selected: ${data.data?.lastPathSegment}\n")
+            appendOutput("[FILE] Selected\n")
             initUbuntu()
         }
     }
@@ -135,44 +97,86 @@ class MainActivity : AppCompatActivity() {
 
     private fun showProgress(text: String, progress: Int) { runOnUiThread { progressLayout.visibility = View.VISIBLE; progressText.text = "$text ($progress%)"; progressBar.progress = progress } }
     private fun hideProgress() { runOnUiThread { progressLayout.visibility = View.GONE } }
-    private fun cancelExtraction() { extractionEngine.cancel(); hideProgress(); appendOutput("[CANCEL] Extraction cancelled.\n") }
+    private fun cancelExtraction() { extractThread?.interrupt(); extractProcess?.destroy(); hideProgress(); appendOutput("[CANCEL] Extraction cancelled.\n") }
+
+    // يدعم جميع أنواع الأرشيفات
+    private fun getExtractCommand(fileName: String): String {
+        return when {
+            fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz") -> "tar -xzf"
+            fileName.endsWith(".tar.xz") || fileName.endsWith(".txz") -> "tar -xJf"
+            fileName.endsWith(".tar.bz2") || fileName.endsWith(".tbz2") -> "tar -xjf"
+            fileName.endsWith(".tar") -> "tar -xf"
+            fileName.endsWith(".zip") -> "unzip -o"
+            else -> "tar -xzf"
+        }
+    }
 
     private fun initUbuntu() {
-        val uri = selectedImageUri ?: return
-        appendOutput("[INIT] Starting extraction engine...\n")
-        
+        appendOutput("[INIT] Starting...\n")
         extractThread = Thread {
-            val cacheDir = cacheDir
-            val prootPath = "${cacheDir}/proot"
-            val ubuntuPath = "${filesDir}/ubuntu"
-            
             try {
-                // تحضير proot
-                if (!File(prootPath).exists()) copyAsset("proot", prootPath)
-                Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor()
+                val cacheDir = cacheDir
+                val prootPath = "${cacheDir}/proot"
+                val busyboxPath = "${cacheDir}/busybox"
+                val ubuntuPath = "${filesDir}/ubuntu"
 
-                val success = extractionEngine.extract(
-                    sourceUri = uri,
-                    destPath = ubuntuPath,
-                    onProgress = { progress -> showProgress(progress.message, progress.percent) },
-                    onLine = { line -> appendOutput("$line\n") }
-                )
+                copyAsset("proot", prootPath); copyAsset("busybox", busyboxPath)
+                Runtime.getRuntime().exec("sync").waitFor(); Thread.sleep(200)
+                Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor(); Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
 
-                hideProgress()
-                if (success && File("$ubuntuPath/bin/bash").exists()) {
-                    appendOutput("[SHELL] Starting bash...\n")
-                    val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
-                    pb.redirectErrorStream(true); shellProcess = pb.start(); shellInput = shellProcess!!.outputStream
-                    runOnUiThread { showNotification() }
-                    shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
-                    appendOutput("[SHELL] Ubuntu Shell Ready.\n\n")
-                } else {
-                    appendOutput("[ERROR] bash not found after extraction.\n")
+                val ubuntuDir = File(ubuntuPath)
+                if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
+                    val uri = selectedImageUri ?: run {
+                        appendOutput("[ERROR] No file selected.\n"); hideProgress(); return@Thread
+                    }
+
+                    val fileName = uri.lastPathSegment ?: "archive.tar"
+                    val tempImage = File("${cacheDir}/archive")
+                    showProgress("Copying...", 0)
+                    contentResolver.openInputStream(uri)!!.use { input -> FileOutputStream(tempImage).use { output -> input.copyTo(output) } }
+                    appendOutput("[COPY] Done.\n")
+
+                    ubuntuDir.mkdirs()
+                    val extractCmd = getExtractCommand(fileName)
+                    appendOutput("[EXTRACT] Using: $extractCmd\n")
+                    showProgress("Extracting...", 30)
+                    
+                    // تقسيم الأمر
+                    val cmdParts = extractCmd.split(" ")
+                    val fullCmd = mutableListOf(busyboxPath)
+                    fullCmd.addAll(cmdParts)
+                    fullCmd.add(tempImage.absolutePath)
+                    fullCmd.add("-C")
+                    fullCmd.add(ubuntuPath)
+
+                    val extractPb = ProcessBuilder(fullCmd).redirectErrorStream(true)
+                    extractProcess = extractPb.start()
+                    var count = 0
+                    extractProcess!!.inputStream.bufferedReader().forEachLine { line ->
+                        if (Thread.currentThread().isInterrupted) return@forEachLine
+                        count++
+                        if (count % 100 == 0) appendOutput("$line\n")
+                    }
+                    val exitCode = extractProcess!!.waitFor()
+                    tempImage.delete()
+                    appendOutput("[EXTRACT] Exit code: $exitCode\n")
                 }
-            } catch (e: Exception) {
+
+                val bashExists = File("$ubuntuPath/bin/bash").exists()
+                if (!bashExists) {
+                    hideProgress()
+                    appendOutput("[ERROR] bash not found.\n")
+                    return@Thread
+                }
+
                 hideProgress()
-                appendOutput("[ERROR] ${e.message}\n")
-            }
+                appendOutput("[SHELL] Starting bash...\n")
+                val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
+                pb.redirectErrorStream(true); shellProcess = pb.start(); shellInput = shellProcess!!.outputStream
+                runOnUiThread { showNotification() }
+                shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
+                appendOutput("[SHELL] Ubuntu Shell Ready.\n\n")
+            } catch (e: Exception) { hideProgress(); appendOutput("[ERROR] ${e.message}\n") }
         }.apply { start() }
     }
 
