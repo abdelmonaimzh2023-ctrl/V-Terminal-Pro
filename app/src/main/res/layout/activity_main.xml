@@ -1,6 +1,145 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Empty layout, UI built programmatically in MainActivity.kt -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical" />
+    android:orientation="vertical"
+    android:background="@drawable/bg_gradient"
+    android:padding="6dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="6dp"
+        android:background="@drawable/header_glass">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="V-TERMINAL PRO"
+            android:textColor="#FF00FFCC"
+            android:textSize="13sp"
+            android:fontFamily="monospace" />
+
+        <Button
+            android:id="@+id/browseBtn"
+            android:layout_width="40dp"
+            android:layout_height="36dp"
+            android:text="..."
+            android:textColor="#FFFFCC00"
+            android:background="@android:color/transparent"
+            android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/settingsBtn"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:text="\u2699"
+            android:textColor="#FF00FFCC"
+            android:background="@android:color/transparent"
+            android:textSize="22sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/progressLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="8dp"
+        android:visibility="gone"
+        android:background="#FF1A1A2E">
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="12dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/progressText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FF00FFCC"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:paddingStart="8dp" />
+
+        <Button
+            android:id="@+id/cancelBtn"
+            android:layout_width="40dp"
+            android:layout_height="30dp"
+            android:text="X"
+            android:textColor="#FFFF0000"
+            android:background="@android:color/transparent"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/scrollView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="vertical"
+        android:scrollbarStyle="insideOverlay"
+        android:layout_marginTop="4dp">
+
+        <TextView
+            android:id="@+id/terminalOutput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFE0F7FA"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:lineSpacingExtra="2dp"
+            android:padding="8dp"
+            android:background="@drawable/terminal_bg" />
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="@drawable/input_bar_glass"
+        android:padding="8dp"
+        android:layout_marginTop="4dp"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="root@ubuntu:~#"
+            android:textColor="#FFFF0055"
+            android:textSize="13sp"
+            android:fontFamily="monospace" />
+
+        <EditText
+            android:id="@+id/terminalInput"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#FFFFFFFF"
+            android:textColorHint="#FF444444"
+            android:background="@android:color/transparent"
+            android:hint="command..."
+            android:inputType="text"
+            android:imeOptions="actionSend"
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
+
+        <Button
+            android:id="@+id/sendBtn"
+            android:layout_width="40dp"
+            android:layout_height="34dp"
+            android:text="\u25B6"
+            android:textColor="#FF000000"
+            android:backgroundTint="#FF00FFCC"
+            android:textSize="14sp" />
+    </LinearLayout>
+</LinearLayout>
