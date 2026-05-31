@@ -45,8 +45,10 @@ class MainActivity : AppCompatActivity() {
         terminalInput = findViewById(R.id.terminalInput)
         scrollView = findViewById(R.id.scrollView)
         val sendBtn: Button = findViewById(R.id.sendBtn)
+        val settingsBtn: Button = findViewById(R.id.settingsBtn)
 
         sendBtn.setOnClickListener { sendCommand() }
+        settingsBtn.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         terminalInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) { sendCommand(); true } else false
         }
@@ -60,7 +62,8 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE,
             Manifest.permission.ACCESS_WIFI_STATE, Manifest.permission.CHANGE_WIFI_STATE,
             Manifest.permission.INTERNET, Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN,
-            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.ACCESS_NETWORK_STATE, Manifest.permission.CHANGE_WIFI_MULTICAST_STATE
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT); permissions.add(Manifest.permission.BLUETOOTH_SCAN)
@@ -106,22 +109,16 @@ class MainActivity : AppCompatActivity() {
         appendOutput("\n[INIT] Initializing Ubuntu...\n")
         Thread {
             try {
-                // استخدام cacheDir لتجنب مشاكل noexec
                 val cacheDir = cacheDir
                 val prootPath = "${cacheDir}/proot"
                 val busyboxPath = "${cacheDir}/busybox"
                 val ubuntuPath = "${filesDir}/ubuntu"
                 val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
 
-                // نسخ الأدوات إلى cache/
                 copyAsset("proot", prootPath)
                 copyAsset("busybox", busyboxPath)
-                
-                // انتظار sync للتأكد من إغلاق الملفات
                 Runtime.getRuntime().exec("sync").waitFor()
                 Thread.sleep(200)
-                
-                // chmod 755 صريح
                 Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor()
                 Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
                 File(prootPath).setExecutable(true, false)
@@ -136,7 +133,6 @@ class MainActivity : AppCompatActivity() {
                     val p = pb.start()
                     p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
                     p.waitFor()
-                    // انتظار إضافي بعد فك الضغط
                     Runtime.getRuntime().exec("sync").waitFor()
                     Thread.sleep(500)
                     appendOutput("[EXTRACT] Done.\n")
@@ -148,30 +144,16 @@ class MainActivity : AppCompatActivity() {
                 shellProcess = pb.start()
                 shellInput = shellProcess!!.outputStream
                 runOnUiThread { showNotification() }
-                shellOutput = Thread {
-                    shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
-                }.apply { start() }
+                shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
                 appendOutput("[SHELL] Ubuntu Shell Ready.\n\n")
-            } catch (e: Exception) {
-                appendOutput("[ERROR] ${e.message}\n")
-            }
+            } catch (e: Exception) { appendOutput("[ERROR] ${e.message}\n") }
         }.start()
     }
 
     private fun copyAsset(name: String, dest: String) {
-        val f = File(dest)
-        if (f.exists() && f.length() > 100000) return
-        try {
-            assets.open(name).use { input ->
-                FileOutputStream(f).use { output ->
-                    input.copyTo(output)
-                    output.flush()
-                    output.fd.sync() // تأكيد كتابة القرص
-                }
-            }
-        } catch (e: Exception) {
-            appendOutput("[COPY ERROR] ${e.message}\n")
-        }
+        val f = File(dest); if (f.exists() && f.length() > 100000) return
+        try { assets.open(name).use { input -> FileOutputStream(f).use { output -> input.copyTo(output); output.flush(); output.fd.sync() } } }
+        catch (e: Exception) { appendOutput("[COPY ERROR] ${e.message}\n") }
     }
 
     private fun sendCommand() {
@@ -182,9 +164,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun appendOutput(text: String) {
-        runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } }
-    }
+    private fun appendOutput(text: String) { runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } } }
 
     override fun onDestroy() { super.onDestroy(); shellProcess?.destroy(); shellOutput?.interrupt() }
 }
