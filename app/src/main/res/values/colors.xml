@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#FF0A0A0F</color>
+    <color name="surface">#FF1A1A2E</color>
+    <color name="neon_cyan">#FF00FFCC</color>
+    <color name="neon_pink">#FFFF0055</color>
+    <color name="neon_purple">#FF4D4DFF</color>
+</resources>
