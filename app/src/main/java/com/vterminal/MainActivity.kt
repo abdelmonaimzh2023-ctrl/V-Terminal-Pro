@@ -39,7 +39,6 @@ class MainActivity : AppCompatActivity() {
     private val channelId = "terminal_session"
     private val notificationId = 1
 
-    // قائمة المسارات المحتملة للـ shell
     private val shellPaths = listOf("/bin/bash", "/usr/bin/bash", "/bin/sh", "/usr/bin/sh")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,44 +69,85 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun browseImageFile() {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }, pickFileCode)
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/gzip", "application/x-xz", "application/zip", "application/x-tar"))
+        }
+        startActivityForResult(intent, pickFileCode)
     }
 
     private fun requestPermissions() {
-        val permissions = mutableListOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.INTERNET)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-        val ungranted = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
-        if (ungranted.isNotEmpty()) ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), permissionRequestCode)
+        val permissions = mutableListOf(
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.INTERNET
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val ungranted = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (ungranted.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), permissionRequestCode)
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == pickFileCode && resultCode == RESULT_OK && data != null) {
             selectedImageUri = data.data
-            appendOutput("[FILE] Selected\n")
+            appendOutput("[READY] File selected: ${selectedImageUri?.lastPathSegment}\n")
             initUbuntu()
         }
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(channelId, "Terminal Session", NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(
+                NotificationChannel(channelId, "Terminal Session", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
     }
 
     private fun showNotification() {
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        getSystemService(NotificationManager::class.java).notify(notificationId, NotificationCompat.Builder(this, channelId).setContentTitle("V-Terminal Pro").setContentText("Ubuntu session is running").setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true).setContentIntent(pi).build())
+        val notif = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("V-Terminal Pro")
+            .setContentText("Ubuntu session is running")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setOngoing(true)
+            .setContentIntent(pi)
+            .build()
+        getSystemService(NotificationManager::class.java)?.notify(notificationId, notif)
     }
 
-    private fun showProgress(text: String, progress: Int) { runOnUiThread { progressLayout.visibility = View.VISIBLE; progressText.text = "$text ($progress%)"; progressBar.progress = progress } }
-    private fun hideProgress() { runOnUiThread { progressLayout.visibility = View.GONE } }
-    private fun cancelExtraction() { extractThread?.interrupt(); extractProcess?.destroy(); hideProgress(); appendOutput("[CANCEL] Extraction cancelled.\n") }
+    private fun showProgress(text: String, progress: Int) {
+        runOnUiThread {
+            progressLayout.visibility = View.VISIBLE
+            progressText.text = "$text ($progress%)"
+            progressBar.progress = progress
+        }
+    }
 
-    // دالة تبحث عن shell صالح
+    private fun hideProgress() {
+        runOnUiThread { progressLayout.visibility = View.GONE }
+    }
+
+    private fun cancelExtraction() {
+        extractThread?.interrupt()
+        extractProcess?.destroy()
+        hideProgress()
+        appendOutput("[CANCEL] Extraction cancelled.\n")
+    }
+
     private fun findShell(rootPath: String): String? {
         for (path in shellPaths) {
             val fullPath = "$rootPath/$path"
-            if (File(fullPath).exists() && File(fullPath).canExecute()) {
-                appendOutput("[FIND] Shell found: $path\n")
+            val file = File(fullPath)
+            if (file.exists()) {
+                appendOutput("[FIND] Shell found: $path (${file.length()} bytes)\n")
                 return path
             }
         }
@@ -126,7 +166,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initUbuntu() {
-        appendOutput("[INIT] Starting...\n")
+        appendOutput("[INIT] Starting extraction pipeline...\n")
         extractThread = Thread {
             try {
                 val cacheDir = cacheDir
@@ -134,29 +174,57 @@ class MainActivity : AppCompatActivity() {
                 val busyboxPath = "${cacheDir}/busybox"
                 val ubuntuPath = "${filesDir}/ubuntu"
 
-                copyAsset("proot", prootPath); copyAsset("busybox", busyboxPath)
-                Runtime.getRuntime().exec("sync").waitFor(); Thread.sleep(200)
-                Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor(); Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
+                // 1. تجهيز الأدوات
+                copyAsset("proot", prootPath)
+                copyAsset("busybox", busyboxPath)
+                Runtime.getRuntime().exec("sync").waitFor()
+                Thread.sleep(300)
+                Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor()
+                Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
+                showProgress("Tools ready", 5)
 
                 val ubuntuDir = File(ubuntuPath)
-                // تحقق من وجود أي shell صالح
                 val existingShell = findShell(ubuntuPath)
-                
+
                 if (existingShell == null) {
-                    // لم نجد shell – نحتاج فك ضغط
                     val uri = selectedImageUri ?: run {
-                        appendOutput("[ERROR] No file selected.\n"); hideProgress(); return@Thread
+                        appendOutput("[ERROR] No file selected.\n")
+                        hideProgress()
+                        return@Thread
                     }
 
                     val fileName = uri.lastPathSegment ?: "archive.tar"
                     val tempImage = File("${cacheDir}/archive")
-                    showProgress("Copying...", 0)
-                    contentResolver.openInputStream(uri)!!.use { input -> FileOutputStream(tempImage).use { output -> input.copyTo(output) } }
-                    appendOutput("[COPY] Done.\n")
 
+                    // 2. نسخ الملف داخلياً
+                    appendOutput("[COPY] Copying archive to internal storage...\n")
+                    showProgress("Copying archive...", 10)
+                    val totalSize = contentResolver.openFileDescriptor(uri, "r")?.statSize ?: 0L
+                    var copied = 0L
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempImage).use { output ->
+                            val buf = ByteArray(65536)
+                            var len: Int
+                            while (input.read(buf).also { len = it } != -1 && !Thread.currentThread().isInterrupted) {
+                                output.write(buf, 0, len)
+                                copied += len
+                                if (totalSize > 0) {
+                                    val pct = (copied * 20 / totalSize).toInt().coerceIn(10, 25)
+                                    showProgress("Copying... ${copied / 1048576}MB / ${totalSize / 1048576}MB", pct)
+                                }
+                            }
+                        }
+                    }
+                    appendOutput("[COPY] Copy complete (${copied / 1048576}MB).\n")
+
+                    // 3. انتظار للتأكد من إغلاق الملف
+                    Runtime.getRuntime().exec("sync").waitFor()
+                    Thread.sleep(500)
+
+                    // 4. فك الضغط
                     ubuntuDir.mkdirs()
                     val extractCmd = getExtractCommand(fileName)
-                    appendOutput("[EXTRACT] Using: $extractCmd\n")
+                    appendOutput("[EXTRACT] Using command: $extractCmd\n")
                     showProgress("Extracting...", 30)
 
                     val cmdParts = extractCmd.split(" ")
@@ -169,37 +237,89 @@ class MainActivity : AppCompatActivity() {
                     val extractPb = ProcessBuilder(fullCmd).redirectErrorStream(true)
                     extractProcess = extractPb.start()
                     var count = 0
-                    extractProcess!!.inputStream.bufferedReader().forEachLine { line ->
+                    extractProcess?.inputStream?.bufferedReader()?.forEachLine { line ->
                         if (Thread.currentThread().isInterrupted) return@forEachLine
                         count++
-                        if (count % 100 == 0) appendOutput("$line\n")
+                        if (count % 100 == 0) {
+                            appendOutput("$line\n")
+                            showProgress("Extracting... $count files", 30 + (count * 60 / 50000).coerceAtMost(60))
+                        }
                     }
-                    val exitCode = extractProcess!!.waitFor()
+                    val exitCode = extractProcess?.waitFor() ?: -1
                     tempImage.delete()
-                    appendOutput("[EXTRACT] Exit code: $exitCode\n")
+                    appendOutput("[EXTRACT] Extraction complete (exit code: $exitCode).\n")
+
+                    // 5. انتظار للتأكد من كتابة جميع الملفات
+                    Runtime.getRuntime().exec("sync").waitFor()
+                    Thread.sleep(500)
                 }
 
-                // البحث عن shell بعد فك الضغط
+                // 6. البحث عن shell بعد فك الضغط
                 val shellPath = findShell(ubuntuPath)
                 if (shellPath == null) {
                     hideProgress()
-                    appendOutput("[ERROR] No shell found. Tried: ${shellPaths.joinToString()}\n")
+                    appendOutput("[ERROR] No shell found. Archive may be invalid.\n")
+                    appendOutput("[ERROR] Tried paths: ${shellPaths.joinToString()}\n")
                     return@Thread
                 }
 
                 hideProgress()
-                appendOutput("[SHELL] Using: $shellPath\n")
+                appendOutput("[SHELL] Launching: $shellPath\n")
                 val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", shellPath)
-                pb.redirectErrorStream(true); shellProcess = pb.start(); shellInput = shellProcess!!.outputStream
+                pb.redirectErrorStream(true)
+                shellProcess = pb.start()
+                shellInput = shellProcess?.outputStream
                 runOnUiThread { showNotification() }
-                shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
+                shellOutput = Thread {
+                    shellProcess?.inputStream?.bufferedReader()?.forEachLine { appendOutput("$it\n") }
+                }.apply { start() }
                 appendOutput("[SHELL] Ubuntu Shell Ready.\n\n")
-            } catch (e: Exception) { hideProgress(); appendOutput("[ERROR] ${e.message}\n") }
+            } catch (e: Exception) {
+                hideProgress()
+                appendOutput("[ERROR] ${e.message}\n")
+            }
         }.apply { start() }
     }
 
-    private fun copyAsset(name: String, dest: String) { val f = File(dest); if (f.exists() && f.length() > 100000) return; try { assets.open(name).use { input -> FileOutputStream(f).use { output -> input.copyTo(output); output.flush(); output.fd.sync() } } } catch (e: Exception) {} }
-    private fun sendCommand() { val cmd = terminalInput.text.toString(); if (cmd.isNotEmpty() && shellInput != null) { try { shellInput!!.write("$cmd\n".toByteArray()); shellInput!!.flush(); terminalInput.text.clear() } catch (e: Exception) { appendOutput("[SEND ERROR] ${e.message}\n") } } }
-    private fun appendOutput(text: String) { runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } } }
-    override fun onDestroy() { super.onDestroy(); shellProcess?.destroy(); shellOutput?.interrupt() }
+    private fun copyAsset(name: String, dest: String) {
+        val f = File(dest)
+        if (f.exists() && f.length() > 100000) return
+        try {
+            assets.open(name).use { input ->
+                FileOutputStream(f).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+        } catch (e: Exception) {
+            appendOutput("[COPY ERROR] $name: ${e.message}\n")
+        }
+    }
+
+    private fun sendCommand() {
+        val cmd = terminalInput.text.toString()
+        if (cmd.isNotEmpty() && shellInput != null) {
+            try {
+                shellInput?.write("$cmd\n".toByteArray())
+                shellInput?.flush()
+                terminalInput.text.clear()
+            } catch (e: Exception) {
+                appendOutput("[SEND ERROR] ${e.message}\n")
+            }
+        }
+    }
+
+    private fun appendOutput(text: String) {
+        runOnUiThread {
+            terminalOutput.append(text)
+            scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        shellProcess?.destroy()
+        shellOutput?.interrupt()
+    }
 }
