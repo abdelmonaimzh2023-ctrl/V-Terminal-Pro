@@ -73,46 +73,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestAllPermissions() {
-        val permissions = mutableListOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.INTERNET, Manifest.permission.ACCESS_NETWORK_STATE,
-            Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(Manifest.permission.BLUETOOTH_CONNECT); permissions.add(Manifest.permission.BLUETOOTH_SCAN)
-        }
+        val permissions = mutableListOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.INTERNET)
         val ungranted = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (ungranted.isNotEmpty()) ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), permissionRequestCode)
-        else checkManageStorage()
-    }
-
-    private fun checkManageStorage() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            startActivityForResult(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply { data = Uri.parse("package:$packageName") }, manageStorageCode)
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == permissionRequestCode) checkManageStorage()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        when (requestCode) {
-            manageStorageCode -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-                    Toast.makeText(this, "Full storage access granted", Toast.LENGTH_SHORT).show()
-                }
-            }
-            pickFileCode -> {
-                if (resultCode == RESULT_OK && data != null) {
-                    selectedImageUri = data.data
-                    appendOutput("[FILE] Selected: ${selectedImageUri?.lastPathSegment}\n")
-                    initUbuntu()
-                }
-            }
+        if (requestCode == pickFileCode && resultCode == RESULT_OK && data != null) {
+            selectedImageUri = data.data
+            appendOutput("[FILE] Selected\n")
+            initUbuntu()
         }
     }
 
@@ -129,19 +100,6 @@ class MainActivity : AppCompatActivity() {
     private fun hideProgress() { runOnUiThread { progressLayout.visibility = View.GONE } }
     private fun cancelExtraction() { extractThread?.interrupt(); extractProcess?.destroy(); hideProgress(); appendOutput("[CANCEL] Extraction cancelled.\n") }
 
-    // اكتشاف نوع الملف واختيار أمر فك الضغط المناسب
-    private fun getTarCommand(fileName: String): String {
-        return when {
-            fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz") -> "tar -xzf"
-            fileName.endsWith(".tar.xz") || fileName.endsWith(".txz") -> "tar -xJf"
-            fileName.endsWith(".tar.bz2") || fileName.endsWith(".tbz2") -> "tar -xjf"
-            fileName.endsWith(".tar") -> "tar -xf"
-            fileName.endsWith(".zip") -> "unzip -o"
-            fileName.endsWith(".rar") -> "unrar x -y"
-            else -> "tar -xf" // افتراضي
-        }
-    }
-
     private fun initUbuntu() {
         appendOutput("[INIT] Initializing Ubuntu...\n")
         extractThread = Thread {
@@ -154,74 +112,48 @@ class MainActivity : AppCompatActivity() {
                 copyAsset("proot", prootPath); copyAsset("busybox", busyboxPath)
                 Runtime.getRuntime().exec("sync").waitFor(); Thread.sleep(200)
                 Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor(); Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
-                File(prootPath).setExecutable(true, false); File(busyboxPath).setExecutable(true, false)
-                showProgress("Tools ready", 5)
 
                 val ubuntuDir = File(ubuntuPath)
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
-                    var imageUri = selectedImageUri
-                    if (imageUri == null) {
-                        val defaultImage = File("${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-correct.tar")
-                        if (defaultImage.exists()) imageUri = Uri.fromFile(defaultImage)
-                        else {
-                            appendOutput("[ERROR] No image selected. Tap [BROWSE] to choose archive.\n")
-                            hideProgress(); return@Thread
+                    val uri = selectedImageUri ?: run {
+                        val defaultImage = File("${Environment.getExternalStorageDirectory()}/V-Viewer/arm-rootfs.tar.gz")
+                        if (defaultImage.exists()) Uri.fromFile(defaultImage) else {
+                            appendOutput("[ERROR] No image found.\n"); hideProgress(); return@Thread
                         }
                     }
 
-                    val uri = imageUri!!
-                    val fileName = uri.lastPathSegment ?: "archive.tar"
-                    val tarCmd = getTarCommand(fileName)
-                    appendOutput("[DETECT] File type: $fileName\n")
-                    appendOutput("[DETECT] Command: $tarCmd\n")
-
-                    val tempImage = File("${cacheDir}/archive")
-                    appendOutput("[COPY] Copying archive to internal storage...\n")
+                    val tempImage = File("${cacheDir}/archive.tar.gz")
+                    appendOutput("[COPY] Copying archive...\n")
                     showProgress("Copying...", 0)
-                    val totalSize = contentResolver.openFileDescriptor(uri, "r")!!.statSize
-                    var copied = 0L
-                    contentResolver.openInputStream(uri)!!.use { input ->
-                        FileOutputStream(tempImage).use { output ->
-                            val buf = ByteArray(65536); var len: Int
-                            while (input.read(buf).also { len = it } != -1 && !Thread.currentThread().isInterrupted) {
-                                output.write(buf, 0, len); copied += len
-                                val pct = (copied * 15 / totalSize).toInt(); showProgress("Copying... ${copied/1048576}MB", pct)
-                            }
-                        }
-                    }
+                    contentResolver.openInputStream(uri)!!.use { input -> FileOutputStream(tempImage).use { output -> input.copyTo(output) } }
                     appendOutput("[COPY] Done.\n")
 
-                    appendOutput("[EXTRACT] Extracting...\n")
-                    ubuntuDir.mkdirs()
-                    showProgress("Counting files...", 15)
-                    val countPb = ProcessBuilder(busyboxPath, "tar", "-tf", tempImage.absolutePath)
-                    countPb.redirectErrorStream(true); val countProc = countPb.start()
-                    var totalFiles = 0; countProc.inputStream.bufferedReader().forEachLine { totalFiles++ }; countProc.waitFor()
-                    if (totalFiles == 0) totalFiles = 50000
-                    appendOutput("[EXTRACT] Total files: $totalFiles\n")
+                    // المرحلة 1: فك ضغط gzip
+                    appendOutput("[GUNZIP] Decompressing gzip...\n")
+                    showProgress("Decompressing...", 15)
+                    val gunzipPb = ProcessBuilder(busyboxPath, "gunzip", "-f", tempImage.absolutePath)
+                    gunzipPb.redirectErrorStream(true)
+                    val gunzipProc = gunzipPb.start()
+                    gunzipProc.waitFor()
+                    val tarFile = File("${cacheDir}/archive.tar")
+                    appendOutput("[GUNZIP] Done. tar size: ${tarFile.length()/1048576}MB\n")
 
-                    showProgress("Extracting... 0/$totalFiles", 15)
-                    // استخدام الأمر المناسب لفك الضغط
-                    val cmdList = tarCmd.split(" ").toMutableList()
-                    cmdList.add(tempImage.absolutePath)
-                    cmdList.add("-C")
-                    cmdList.add(ubuntuPath)
-                    val extractPb = ProcessBuilder(busyboxPath, *cmdList.toTypedArray())
-                    extractPb.redirectErrorStream(true); extractProcess = extractPb.start()
-                    var currentFile = 0
-                    extractProcess!!.inputStream.bufferedReader().forEachLine { line ->
-                        if (Thread.currentThread().isInterrupted) return@forEachLine
-                        currentFile++; appendOutput("$line\n")
-                        if (currentFile % 100 == 0) { val pct = 15 + (currentFile * 80 / totalFiles); showProgress("Extracting... $currentFile/$totalFiles", pct) }
-                    }
+                    // المرحلة 2: فك ضغط tar
+                    ubuntuDir.mkdirs()
+                    appendOutput("[EXTRACT] Extracting tar...\n")
+                    showProgress("Extracting...", 30)
+                    val extractPb = ProcessBuilder(busyboxPath, "tar", "-xf", tarFile.absolutePath, "-C", ubuntuPath)
+                    extractPb.redirectErrorStream(true)
+                    extractProcess = extractPb.start()
+                    extractProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
                     val exitCode = extractProcess!!.waitFor()
+                    tarFile.delete()
                     appendOutput("[EXTRACT] Exit code: $exitCode\n")
-                    showProgress("Verifying...", 95)
-                    val bashExists = File("$ubuntuPath/bin/bash").exists()
-                    appendOutput("[VERIFY] bash: $bashExists\n")
-                    if (!bashExists) { hideProgress(); appendOutput("[ERROR] bash not found.\n"); return@Thread }
-                    showProgress("Complete", 100)
                 }
+
+                val bashExists = File("$ubuntuPath/bin/bash").exists()
+                appendOutput("[VERIFY] bash: $bashExists\n")
+                if (!bashExists) { hideProgress(); appendOutput("[ERROR] bash not found.\n"); return@Thread }
 
                 hideProgress()
                 appendOutput("[SHELL] Starting bash...\n")
@@ -234,7 +166,7 @@ class MainActivity : AppCompatActivity() {
         }.apply { start() }
     }
 
-    private fun copyAsset(name: String, dest: String) { val f = File(dest); if (f.exists() && f.length() > 100000) return; try { assets.open(name).use { input -> FileOutputStream(f).use { output -> input.copyTo(output); output.flush(); output.fd.sync() } } } catch (e: Exception) { appendOutput("[COPY ERROR] ${e.message}\n") } }
+    private fun copyAsset(name: String, dest: String) { val f = File(dest); if (f.exists() && f.length() > 100000) return; try { assets.open(name).use { input -> FileOutputStream(f).use { output -> input.copyTo(output); output.flush(); output.fd.sync() } } } catch (e: Exception) {} }
     private fun sendCommand() { val cmd = terminalInput.text.toString(); if (cmd.isNotEmpty() && shellInput != null) { try { shellInput!!.write("$cmd\n".toByteArray()); shellInput!!.flush(); terminalInput.text.clear() } catch (e: Exception) { appendOutput("[SEND ERROR] ${e.message}\n") } } }
     private fun appendOutput(text: String) { runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } } }
     override fun onDestroy() { super.onDestroy(); shellProcess?.destroy(); shellOutput?.interrupt() }
