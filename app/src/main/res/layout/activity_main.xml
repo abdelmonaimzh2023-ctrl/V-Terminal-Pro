@@ -3,8 +3,17 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#FF0A0A0F"
-    android:padding="12dp">
+    android:background="@drawable/animated_bg"
+    android:padding="10dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="V-Terminal Pro"
+        android:textColor="#FF00FFCC"
+        android:textSize="16sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="4dp" />
 
     <ScrollView
         android:id="@+id/scrollView"
@@ -19,20 +28,20 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#FFE0F7FA"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:fontFamily="monospace"
             android:lineSpacingExtra="2dp"
             android:padding="8dp"
-            android:background="#FF0D0E15" />
+            android:background="#CC0D0E15" />
     </ScrollView>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@drawable/input_bar_bg"
-        android:padding="12dp"
-        android:layout_marginTop="8dp"
+        android:background="@drawable/input_bar_glass"
+        android:padding="10dp"
+        android:layout_marginTop="6dp"
         android:gravity="center_vertical">
 
         <TextView
@@ -61,12 +70,11 @@
 
         <Button
             android:id="@+id/sendBtn"
-            android:layout_width="wrap_content"
+            android:layout_width="46dp"
             android:layout_height="40dp"
-            android:text="SEND"
+            android:text="▶"
             android:textColor="#FF000000"
             android:backgroundTint="#FF00FFCC"
-            android:textSize="12sp"
-            android:fontFamily="monospace" />
+            android:textSize="16sp" />
     </LinearLayout>
 </LinearLayout>

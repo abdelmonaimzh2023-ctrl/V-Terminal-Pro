@@ -48,9 +48,7 @@ class MainActivity : AppCompatActivity() {
 
         sendBtn.setOnClickListener { sendCommand() }
         terminalInput.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) {
-                sendCommand(); true
-            } else false
+            if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) { sendCommand(); true } else false
         }
 
         createNotificationChannel()
@@ -59,42 +57,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestAllPermissions() {
         val permissions = mutableListOf(
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.ACCESS_WIFI_STATE,
-            Manifest.permission.CHANGE_WIFI_STATE,
-            Manifest.permission.INTERNET,
-            Manifest.permission.BLUETOOTH,
-            Manifest.permission.BLUETOOTH_ADMIN,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.ACCESS_WIFI_STATE, Manifest.permission.CHANGE_WIFI_STATE,
+            Manifest.permission.INTERNET, Manifest.permission.BLUETOOTH, Manifest.permission.BLUETOOTH_ADMIN,
+            Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
-            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT); permissions.add(Manifest.permission.BLUETOOTH_SCAN)
         }
-        val ungranted = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (ungranted.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), permissionRequestCode)
-        } else {
-            checkManageStorage()
-        }
+        val ungranted = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
+        if (ungranted.isNotEmpty()) ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), permissionRequestCode)
+        else checkManageStorage()
     }
 
     private fun checkManageStorage() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                intent.data = Uri.parse("package:$packageName")
-                startActivityForResult(intent, manageStorageCode)
-            } else {
-                initUbuntu()
-            }
-        } else {
-            initUbuntu()
-        }
+                startActivityForResult(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply { data = Uri.parse("package:$packageName") }, manageStorageCode)
+            } else initUbuntu()
+        } else initUbuntu()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
@@ -106,83 +87,54 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == manageStorageCode) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-                Toast.makeText(this, "Full storage access granted", Toast.LENGTH_SHORT).show()
-                initUbuntu()
-            } else {
-                Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
-            }
+                Toast.makeText(this, "Full storage access granted", Toast.LENGTH_SHORT).show(); initUbuntu()
+            } else Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Terminal Session", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(channelId, "Terminal Session", NotificationManager.IMPORTANCE_LOW))
     }
 
     private fun showNotification() {
-        val intent = Intent(this, MainActivity::class.java)
-        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("V-Terminal Pro")
-            .setContentText("Ubuntu session is running")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(true)
-            .setContentIntent(pi)
-            .build()
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(notificationId, notification)
+        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(this, channelId).setContentTitle("V-Terminal Pro").setContentText("Ubuntu session is running").setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true).setContentIntent(pi).build()
+        getSystemService(NotificationManager::class.java).notify(notificationId, n)
     }
 
     private fun initUbuntu() {
-        appendOutput("Initializing Ubuntu...\n")
+        appendOutput("\n🚀 Initializing Ubuntu...\n")
         Thread {
             try {
-                val prootPath = "${filesDir}/proot"
-                val busyboxPath = "${filesDir}/busybox"
-                val ubuntuPath = "${filesDir}/ubuntu"
-                val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
+                val prootPath = "${filesDir}/proot"; val busyboxPath = "${filesDir}/busybox"
+                val ubuntuPath = "${filesDir}/ubuntu"; val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
 
-                copyAsset("proot", prootPath)
-                copyAsset("busybox", busyboxPath)
-                File(prootPath).setExecutable(true)
-                File(busyboxPath).setExecutable(true)
+                // نسخ الأدوات مع sync لتجنب Text file busy
+                copyAsset("proot", prootPath); copyAsset("busybox", busyboxPath)
+                Runtime.getRuntime().exec("sync").waitFor()
+                File(prootPath).setExecutable(true); File(busyboxPath).setExecutable(true)
 
                 val ubuntuDir = File(ubuntuPath)
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
-                    appendOutput("Extracting Ubuntu...\n")
-                    ubuntuDir.mkdirs()
+                    appendOutput("📦 Extracting Ubuntu...\n"); ubuntuDir.mkdirs()
                     val pb = ProcessBuilder(busyboxPath, "tar", "-xzf", imagePath, "-C", ubuntuPath)
-                    pb.redirectErrorStream(true)
-                    val p = pb.start()
-                    p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
-                    p.waitFor()
-                    appendOutput("Extraction complete.\n")
+                    pb.redirectErrorStream(true); val p = pb.start()
+                    p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }; p.waitFor()
+                    appendOutput("✅ Extraction complete.\n")
                 }
 
-                appendOutput("Starting shell...\n")
+                appendOutput("🐚 Starting shell...\n")
                 val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
-                pb.redirectErrorStream(true)
-                shellProcess = pb.start()
-                shellInput = shellProcess!!.outputStream
-
+                pb.redirectErrorStream(true); shellProcess = pb.start(); shellInput = shellProcess!!.outputStream
                 runOnUiThread { showNotification() }
-
-                shellOutput = Thread {
-                    shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
-                }.apply { start() }
-
-                appendOutput("Ubuntu Shell Ready.\n\n")
-            } catch (e: Exception) {
-                appendOutput("Error: ${e.message}\n")
-            }
+                shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
+                appendOutput("✨ Ubuntu Shell Ready.\n\n")
+            } catch (e: Exception) { appendOutput("❌ Error: ${e.message}\n") }
         }.start()
     }
 
     private fun copyAsset(name: String, dest: String) {
-        val f = File(dest)
-        if (f.exists() && f.length() > 100000) return
+        val f = File(dest); if (f.exists() && f.length() > 100000) return
         try { assets.open(name).use { it.copyTo(FileOutputStream(f)) } } catch (e: Exception) { appendOutput("Copy error: ${e.message}\n") }
     }
 
@@ -194,12 +146,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun appendOutput(text: String) {
-        runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } }
-    }
+    private fun appendOutput(text: String) { runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } } }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        shellProcess?.destroy(); shellOutput?.interrupt()
-    }
+    override fun onDestroy() { super.onDestroy(); shellProcess?.destroy(); shellOutput?.interrupt() }
 }
