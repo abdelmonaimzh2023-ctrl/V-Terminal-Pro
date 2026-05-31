@@ -16,16 +16,14 @@ class SettingsActivity : AppCompatActivity() {
 
         section("TERMINAL")
         btn("Ubuntu Shell (Proot)") { finish() }
-        btn("Termux Integrated") { startActivity(Intent(this, TermuxActivity::class.java)) }
         btn("V-Viewer (GPU Desktop)") { Toast.makeText(this, "Coming soon", Toast.LENGTH_SHORT).show() }
 
         section("DEVICE")
         btn("Camera") { startActivity(Intent("android.media.action.IMAGE_CAPTURE")) }
-        btn("Location Settings") { startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
         btn("Developer Options") { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
 
         section("ABOUT")
-        btn("V-Terminal Pro v1.0") { Toast.makeText(this, "Terminal & Ubuntu • Termux Integrated\n2026", Toast.LENGTH_LONG).show() }
+        btn("V-Terminal Pro v1.0") { Toast.makeText(this, "Terminal & Ubuntu\n2026", Toast.LENGTH_LONG).show() }
 
         scroll.addView(layout); setContentView(scroll)
     }
