@@ -12,11 +12,7 @@ import android.os.Environment
 import android.provider.Settings
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -27,10 +23,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var terminalOutput: TextView
     private lateinit var terminalInput: EditText
     private lateinit var scrollView: ScrollView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var progressText: TextView
+    private lateinit var cancelBtn: Button
+    private lateinit var progressLayout: LinearLayout
 
     private var shellProcess: Process? = null
     private var shellInput: OutputStream? = null
     private var shellOutput: Thread? = null
+    private var extractThread: Thread? = null
+    private var extractProcess: Process? = null
 
     private val permissionRequestCode = 100
     private val manageStorageCode = 101
@@ -46,9 +48,14 @@ class MainActivity : AppCompatActivity() {
         scrollView = findViewById(R.id.scrollView)
         val sendBtn: Button = findViewById(R.id.sendBtn)
         val settingsBtn: Button = findViewById(R.id.settingsBtn)
+        progressBar = findViewById(R.id.progressBar)
+        progressText = findViewById(R.id.progressText)
+        cancelBtn = findViewById(R.id.cancelBtn)
+        progressLayout = findViewById(R.id.progressLayout)
 
         sendBtn.setOnClickListener { sendCommand() }
         settingsBtn.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        cancelBtn.setOnClickListener { cancelExtraction() }
         terminalInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND || actionId == EditorInfo.IME_ACTION_DONE) { sendCommand(); true } else false
         }
@@ -105,9 +112,28 @@ class MainActivity : AppCompatActivity() {
         getSystemService(NotificationManager::class.java).notify(notificationId, n)
     }
 
+    private fun showProgress(text: String, progress: Int) {
+        runOnUiThread {
+            progressLayout.visibility = View.VISIBLE
+            progressText.text = "$text ($progress%)"
+            progressBar.progress = progress
+        }
+    }
+
+    private fun hideProgress() {
+        runOnUiThread { progressLayout.visibility = View.GONE }
+    }
+
+    private fun cancelExtraction() {
+        extractThread?.interrupt()
+        extractProcess?.destroy()
+        hideProgress()
+        appendOutput("[CANCEL] Extraction cancelled.\n")
+    }
+
     private fun initUbuntu() {
-        appendOutput("\n[INIT] Initializing Ubuntu...\n")
-        Thread {
+        appendOutput("[INIT] Initializing Ubuntu...\n")
+        extractThread = Thread {
             try {
                 val cacheDir = cacheDir
                 val prootPath = "${cacheDir}/proot"
@@ -116,6 +142,7 @@ class MainActivity : AppCompatActivity() {
                 val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
 
                 // نسخ الأدوات
+                showProgress("Copying tools", 0)
                 copyAsset("proot", prootPath)
                 copyAsset("busybox", busyboxPath)
                 Runtime.getRuntime().exec("sync").waitFor()
@@ -124,30 +151,79 @@ class MainActivity : AppCompatActivity() {
                 Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
                 File(prootPath).setExecutable(true, false)
                 File(busyboxPath).setExecutable(true, false)
+                showProgress("Tools ready", 5)
 
                 val ubuntuDir = File(ubuntuPath)
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
+                    // نسخ الصورة داخلياً مع شريط تقدم
+                    val tempImage = File("${cacheDir}/rootfs-full.tar")
+                    if (!tempImage.exists() || tempImage.length() < 1000000) {
+                        appendOutput("[COPY] Copying image to internal storage...\n")
+                        val totalSize = File(imagePath).length()
+                        var copied = 0L
+                        FileInputStream(File(imagePath)).use { input ->
+                            FileOutputStream(tempImage).use { output ->
+                                val buf = ByteArray(65536)
+                                var len: Int
+                                while (input.read(buf).also { len = it } != -1 && !Thread.currentThread().isInterrupted) {
+                                    output.write(buf, 0, len)
+                                    copied += len
+                                    val pct = (copied * 15 / totalSize).toInt()
+                                    showProgress("Copying image... ${copied/1048576}MB", pct)
+                                }
+                            }
+                        }
+                        appendOutput("[COPY] Image copied.\n")
+                    }
+
+                    // فك الضغط مع شريط تقدم
                     appendOutput("[EXTRACT] Extracting Ubuntu...\n")
                     ubuntuDir.mkdirs()
-                    // [FIX] استخدام -xf بدلاً من -xzf لأن الملف .tar وليس .tar.gz
-                    val pb = ProcessBuilder(busyboxPath, "tar", "-xf", imagePath, "-C", ubuntuPath)
-                    pb.redirectErrorStream(true)
-                    val p = pb.start()
-                    p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
-                    val exitCode = p.waitFor()
-                    appendOutput("[EXTRACT] Exit code: $exitCode\n")
-                    Runtime.getRuntime().exec("sync").waitFor()
-                    Thread.sleep(500)
                     
-                    // التحقق من وجود bash بعد فك الضغط
-                    if (File("$ubuntuPath/bin/bash").exists()) {
-                        appendOutput("[EXTRACT] bash found. Done.\n")
-                    } else {
-                        appendOutput("[EXTRACT] ERROR: bash not found. Archive may be invalid.\n")
+                    // عد الملفات أولاً لشريط التقدم
+                    showProgress("Counting files...", 15)
+                    val countPb = ProcessBuilder(busyboxPath, "tar", "-tf", tempImage.absolutePath)
+                    countPb.redirectErrorStream(true)
+                    val countProc = countPb.start()
+                    var totalFiles = 0
+                    countProc.inputStream.bufferedReader().forEachLine { totalFiles++ }
+                    countProc.waitFor()
+                    if (totalFiles == 0) totalFiles = 50000
+                    appendOutput("[EXTRACT] Total files: $totalFiles\n")
+
+                    // فك الضغط مع تحديث شريط التقدم
+                    showProgress("Extracting... 0/$totalFiles", 15)
+                    val extractPb = ProcessBuilder(busyboxPath, "tar", "-xf", tempImage.absolutePath, "-C", ubuntuPath)
+                    extractPb.redirectErrorStream(true)
+                    extractProcess = extractPb.start()
+                    var currentFile = 0
+                    extractProcess!!.inputStream.bufferedReader().forEachLine { line ->
+                        if (Thread.currentThread().isInterrupted) return@forEachLine
+                        currentFile++
+                        appendOutput("$line\n")
+                        if (currentFile % 100 == 0) {
+                            val pct = 15 + (currentFile * 80 / totalFiles)
+                            showProgress("Extracting... $currentFile/$totalFiles", pct)
+                        }
+                    }
+                    val exitCode = extractProcess!!.waitFor()
+                    appendOutput("[EXTRACT] Exit code: $exitCode\n")
+                    
+                    // فحص النتيجة
+                    showProgress("Verifying...", 95)
+                    val bashExists = File("$ubuntuPath/bin/bash").exists()
+                    val etcExists = File("$ubuntuPath/etc").exists()
+                    appendOutput("[VERIFY] bash: $bashExists, etc: $etcExists\n")
+                    
+                    if (!bashExists) {
+                        hideProgress()
+                        appendOutput("[ERROR] bash not found. Archive may be invalid.\n")
                         return@Thread
                     }
+                    showProgress("Complete", 100)
                 }
 
+                hideProgress()
                 appendOutput("[SHELL] Starting bash...\n")
                 val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
                 pb.redirectErrorStream(true)
@@ -156,8 +232,11 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { showNotification() }
                 shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
                 appendOutput("[SHELL] Ubuntu Shell Ready.\n\n")
-            } catch (e: Exception) { appendOutput("[ERROR] ${e.message}\n") }
-        }.start()
+            } catch (e: Exception) {
+                hideProgress()
+                appendOutput("[ERROR] ${e.message}\n")
+            }
+        }.apply { start() }
     }
 
     private fun copyAsset(name: String, dest: String) {
