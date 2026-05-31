@@ -69,9 +69,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun browseImageFile() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
-        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
         startActivityForResult(intent, pickFileCode)
     }
 
@@ -156,7 +154,6 @@ class MainActivity : AppCompatActivity() {
 
                 val ubuntuDir = File(ubuntuPath)
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
-                    // استخدام الملف المختار أو الافتراضي
                     var imageUri = selectedImageUri
                     if (imageUri == null) {
                         val defaultImage = File("${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-correct.tar")
@@ -167,12 +164,13 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    val uri = imageUri!!
                     val tempImage = File("${cacheDir}/rootfs.tar")
                     appendOutput("[COPY] Copying image to internal storage...\n")
                     showProgress("Copying image...", 0)
-                    val totalSize = contentResolver.openFileDescriptor(imageUri, "r")!!.statSize
+                    val totalSize = contentResolver.openFileDescriptor(uri, "r")!!.statSize
                     var copied = 0L
-                    contentResolver.openInputStream(imageUri)!!.use { input ->
+                    contentResolver.openInputStream(uri)!!.use { input ->
                         FileOutputStream(tempImage).use { output ->
                             val buf = ByteArray(65536); var len: Int
                             while (input.read(buf).also { len = it } != -1 && !Thread.currentThread().isInterrupted) {

@@ -22,7 +22,6 @@ class TermuxActivity : AppCompatActivity() {
             setPadding(4, 4, 4, 4)
         }
 
-        // Extra keys row (ESC, TAB, CTRL, ALT, -, /, |, UP, DOWN)
         val extraKeys = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, 4)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -72,7 +71,7 @@ class TermuxActivity : AppCompatActivity() {
         append("[TERMUX] Starting shell...\n")
         Thread {
             try {
-                val pb = ProcessBuilder("/system/bin/sh", "-c", "export HOME=/data/data/com.vterminal.pro/files; export PATH=$PATH:/system/bin; exec sh")
+                val pb = ProcessBuilder("/system/bin/sh")
                 pb.redirectErrorStream(true); shell = pb.start(); shellIn = shell!!.outputStream
                 Thread { shell!!.inputStream.bufferedReader().forEachLine { append("$it\n") } }.start()
                 append("[TERMUX] Ready.\n\n")
