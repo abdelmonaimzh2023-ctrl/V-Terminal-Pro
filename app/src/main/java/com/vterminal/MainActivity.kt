@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -58,7 +57,6 @@ class MainActivity : AppCompatActivity() {
         requestAllPermissions()
     }
 
-    // ===================== صلاحيات =====================
     private fun requestAllPermissions() {
         val permissions = mutableListOf(
             Manifest.permission.READ_EXTERNAL_STORAGE,
@@ -69,15 +67,12 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.BLUETOOTH,
             Manifest.permission.BLUETOOTH_ADMIN,
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.FOREGROUND_SERVICE,
             Manifest.permission.POST_NOTIFICATIONS
         )
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
             permissions.add(Manifest.permission.BLUETOOTH_SCAN)
         }
-
         val ungranted = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
@@ -104,9 +99,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == permissionRequestCode) {
-            checkManageStorage()
-        }
+        if (requestCode == permissionRequestCode) checkManageStorage()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -116,12 +109,11 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Full storage access granted", Toast.LENGTH_SHORT).show()
                 initUbuntu()
             } else {
-                Toast.makeText(this, "Storage permission required for Ubuntu", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Storage permission required", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    // ===================== إشعارات =====================
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, "Terminal Session", NotificationManager.IMPORTANCE_LOW)
@@ -129,20 +121,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startForegroundNotification() {
+    private fun showNotification() {
         val intent = Intent(this, MainActivity::class.java)
         val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("V-Terminal Pro")
-            .setContentText("Ubuntu session is running in background")
+            .setContentText("Ubuntu session is running")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .setContentIntent(pi)
             .build()
-        startForeground(notificationId, notification)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(notificationId, notification)
     }
 
-    // ===================== Ubuntu =====================
     private fun initUbuntu() {
         appendOutput("Initializing Ubuntu...\n")
         Thread {
@@ -152,13 +144,11 @@ class MainActivity : AppCompatActivity() {
                 val ubuntuPath = "${filesDir}/ubuntu"
                 val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
 
-                // نسخ الأدوات
                 copyAsset("proot", prootPath)
                 copyAsset("busybox", busyboxPath)
                 File(prootPath).setExecutable(true)
                 File(busyboxPath).setExecutable(true)
 
-                // فك الضغط إذا لزم
                 val ubuntuDir = File(ubuntuPath)
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
                     appendOutput("Extracting Ubuntu...\n")
@@ -171,17 +161,14 @@ class MainActivity : AppCompatActivity() {
                     appendOutput("Extraction complete.\n")
                 }
 
-                // بدء الجلسة
                 appendOutput("Starting shell...\n")
                 val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
                 pb.redirectErrorStream(true)
                 shellProcess = pb.start()
                 shellInput = shellProcess!!.outputStream
 
-                // بدء الإشعار
-                runOnUiThread { startForegroundNotification() }
+                runOnUiThread { showNotification() }
 
-                // قراءة المخرجات
                 shellOutput = Thread {
                     shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
                 }.apply { start() }
@@ -196,37 +183,23 @@ class MainActivity : AppCompatActivity() {
     private fun copyAsset(name: String, dest: String) {
         val f = File(dest)
         if (f.exists() && f.length() > 100000) return
-        try {
-            assets.open(name).use { it.copyTo(FileOutputStream(f)) }
-        } catch (e: Exception) {
-            appendOutput("Copy error: ${e.message}\n")
-        }
+        try { assets.open(name).use { it.copyTo(FileOutputStream(f)) } } catch (e: Exception) { appendOutput("Copy error: ${e.message}\n") }
     }
 
-    // ===================== أوامر =====================
     private fun sendCommand() {
         val cmd = terminalInput.text.toString()
         if (cmd.isNotEmpty() && shellInput != null) {
-            try {
-                shellInput!!.write("$cmd\n".toByteArray())
-                shellInput!!.flush()
-                terminalInput.text.clear()
-            } catch (e: Exception) {
-                appendOutput("Send error: ${e.message}\n")
-            }
+            try { shellInput!!.write("$cmd\n".toByteArray()); shellInput!!.flush(); terminalInput.text.clear() }
+            catch (e: Exception) { appendOutput("Send error: ${e.message}\n") }
         }
     }
 
     private fun appendOutput(text: String) {
-        runOnUiThread {
-            terminalOutput.append(text)
-            scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
-        }
+        runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        shellProcess?.destroy()
-        shellOutput?.interrupt()
+        shellProcess?.destroy(); shellOutput?.interrupt()
     }
 }
