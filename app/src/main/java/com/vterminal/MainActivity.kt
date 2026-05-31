@@ -39,6 +39,9 @@ class MainActivity : AppCompatActivity() {
     private val channelId = "terminal_session"
     private val notificationId = 1
 
+    // قائمة المسارات المحتملة للـ shell
+    private val shellPaths = listOf("/bin/bash", "/usr/bin/bash", "/bin/sh", "/usr/bin/sh")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -99,7 +102,18 @@ class MainActivity : AppCompatActivity() {
     private fun hideProgress() { runOnUiThread { progressLayout.visibility = View.GONE } }
     private fun cancelExtraction() { extractThread?.interrupt(); extractProcess?.destroy(); hideProgress(); appendOutput("[CANCEL] Extraction cancelled.\n") }
 
-    // يدعم جميع أنواع الأرشيفات
+    // دالة تبحث عن shell صالح
+    private fun findShell(rootPath: String): String? {
+        for (path in shellPaths) {
+            val fullPath = "$rootPath/$path"
+            if (File(fullPath).exists() && File(fullPath).canExecute()) {
+                appendOutput("[FIND] Shell found: $path\n")
+                return path
+            }
+        }
+        return null
+    }
+
     private fun getExtractCommand(fileName: String): String {
         return when {
             fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz") -> "tar -xzf"
@@ -125,7 +139,11 @@ class MainActivity : AppCompatActivity() {
                 Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor(); Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
 
                 val ubuntuDir = File(ubuntuPath)
-                if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
+                // تحقق من وجود أي shell صالح
+                val existingShell = findShell(ubuntuPath)
+                
+                if (existingShell == null) {
+                    // لم نجد shell – نحتاج فك ضغط
                     val uri = selectedImageUri ?: run {
                         appendOutput("[ERROR] No file selected.\n"); hideProgress(); return@Thread
                     }
@@ -140,8 +158,7 @@ class MainActivity : AppCompatActivity() {
                     val extractCmd = getExtractCommand(fileName)
                     appendOutput("[EXTRACT] Using: $extractCmd\n")
                     showProgress("Extracting...", 30)
-                    
-                    // تقسيم الأمر
+
                     val cmdParts = extractCmd.split(" ")
                     val fullCmd = mutableListOf(busyboxPath)
                     fullCmd.addAll(cmdParts)
@@ -162,16 +179,17 @@ class MainActivity : AppCompatActivity() {
                     appendOutput("[EXTRACT] Exit code: $exitCode\n")
                 }
 
-                val bashExists = File("$ubuntuPath/bin/bash").exists()
-                if (!bashExists) {
+                // البحث عن shell بعد فك الضغط
+                val shellPath = findShell(ubuntuPath)
+                if (shellPath == null) {
                     hideProgress()
-                    appendOutput("[ERROR] bash not found.\n")
+                    appendOutput("[ERROR] No shell found. Tried: ${shellPaths.joinToString()}\n")
                     return@Thread
                 }
 
                 hideProgress()
-                appendOutput("[SHELL] Starting bash...\n")
-                val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
+                appendOutput("[SHELL] Using: $shellPath\n")
+                val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", shellPath)
                 pb.redirectErrorStream(true); shellProcess = pb.start(); shellInput = shellProcess!!.outputStream
                 runOnUiThread { showNotification() }
                 shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
