@@ -4,35 +4,36 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/bg_gradient"
-    android:padding="8dp">
+    android:padding="6dp">
 
     <!-- Header bar -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="48dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="8dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="6dp"
         android:background="@drawable/header_glass">
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="[ V-Terminal Pro ]"
+            android:text="V-TERMINAL PRO"
             android:textColor="#FF00FFCC"
-            android:textSize="14sp"
-            android:fontFamily="monospace" />
+            android:textSize="13sp"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.1" />
 
         <Button
             android:id="@+id/settingsBtn"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:text="+"
-            android:textColor="#FF000000"
-            android:backgroundTint="#FF00FFCC"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:text="\u2699"
+            android:textColor="#FF00FFCC"
+            android:background="@android:color/transparent"
+            android:textSize="22sp" />
     </LinearLayout>
 
     <!-- Terminal output -->
@@ -50,7 +51,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#FFE0F7FA"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:fontFamily="monospace"
             android:lineSpacingExtra="2dp"
             android:padding="8dp"
@@ -63,7 +64,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:background="@drawable/input_bar_glass"
-        android:padding="10dp"
+        android:padding="8dp"
         android:layout_marginTop="4dp"
         android:gravity="center_vertical">
 
@@ -72,7 +73,7 @@
             android:layout_height="wrap_content"
             android:text="root@ubuntu:~#"
             android:textColor="#FFFF0055"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:fontFamily="monospace" />
 
         <EditText
@@ -81,24 +82,23 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:textColor="#FFFFFFFF"
-            android:textColorHint="#FF555555"
+            android:textColorHint="#FF444444"
             android:background="@android:color/transparent"
-            android:hint="enter command..."
+            android:hint="command..."
             android:inputType="text"
             android:imeOptions="actionSend"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:fontFamily="monospace"
             android:paddingStart="8dp"
             android:paddingEnd="8dp" />
 
         <Button
             android:id="@+id/sendBtn"
-            android:layout_width="46dp"
-            android:layout_height="40dp"
-            android:text=">"
+            android:layout_width="40dp"
+            android:layout_height="34dp"
+            android:text="\u25B6"
             android:textColor="#FF000000"
             android:backgroundTint="#FF00FFCC"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textSize="14sp" />
     </LinearLayout>
 </LinearLayout>

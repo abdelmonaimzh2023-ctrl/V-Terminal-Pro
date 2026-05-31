@@ -4,11 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
 class SettingsActivity : AppCompatActivity() {
@@ -18,39 +14,49 @@ class SettingsActivity : AppCompatActivity() {
         val scroll = ScrollView(this)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
+            setPadding(24, 24, 24, 24)
         }
 
+        // Title
         val title = TextView(this).apply {
-            text = "V-Terminal Pro Settings"
-            textSize = 18f
+            text = "Settings"
+            textSize = 20f
             setTextColor(0xFF00FFCC.toInt())
+            setPadding(0, 0, 0, 16)
             layout.addView(this)
         }
 
-        fun addButton(text: String, action: () -> Unit) {
+        fun addItem(section: String, text: String, action: () -> Unit) {
+            // Section header
+            val header = TextView(this).apply {
+                this.text = section
+                textSize = 11f
+                setTextColor(0xFF666666.toInt())
+                setPadding(0, 12, 0, 4)
+            }
+            layout.addView(header)
+
+            // Button
             val btn = Button(this@SettingsActivity).apply {
                 this.text = text
-                setTextColor(0xFFFFFFFF.toInt())
+                setTextColor(0xFFE0E0E0.toInt())
                 setBackgroundColor(0xFF1A1A2E.toInt())
                 setOnClickListener { action() }
             }
             layout.addView(btn)
         }
 
-        addButton("[ WiFi ] Open WiFi Settings") {
+        addItem("CONNECTIVITY", "WiFi Settings") {
             startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
         }
-
-        addButton("[ Network ] Open Network Settings") {
+        addItem("", "Bluetooth Settings") {
+            startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        }
+        addItem("", "Network & Internet") {
             startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
         }
 
-        addButton("[ Bluetooth ] Open Bluetooth Settings") {
-            startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
-        }
-
-        addButton("[ Storage ] Manage All Files") {
+        addItem("STORAGE", "Manage All Files") {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
                     data = Uri.parse("package:$packageName")
@@ -58,16 +64,15 @@ class SettingsActivity : AppCompatActivity() {
             }
         }
 
-        addButton("[ Location ] Open Location Settings") {
+        addItem("SYSTEM", "Developer Options") {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+        }
+        addItem("", "Location Settings") {
             startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
         }
 
-        addButton("[ Developer ] Developer Options") {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
-        }
-
-        addButton("[ About ] V-Terminal Pro v1.0") {
-            Toast.makeText(this, "V-Terminal Pro // Terminal & Ubuntu // 2026", Toast.LENGTH_LONG).show()
+        addItem("ABOUT", "V-Terminal Pro v1.0") {
+            Toast.makeText(this, "Terminal & Ubuntu Environment\n2026 Edition", Toast.LENGTH_LONG).show()
         }
 
         scroll.addView(layout)
