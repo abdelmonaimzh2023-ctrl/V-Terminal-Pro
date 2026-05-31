@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- تخزين كامل -->
+    <!-- تخزين -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
-    <!-- واي فاي – كل الصلاحيات -->
+    <!-- واي فاي -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
     <!-- بلوتوث -->
@@ -21,13 +20,25 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
+    <!-- كاميرا -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- ميكروفون -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- موقع -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
-    <!-- إشعارات وخدمة أمامية -->
+    <!-- إشعارات وخدمة -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- مستشعرات -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -46,10 +57,8 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name="com.vterminal.SettingsActivity"
-            android:exported="false"
-            android:theme="@style/Theme.VTerminal" />
+        <activity android:name="com.vterminal.SettingsActivity" android:exported="false" android:theme="@style/Theme.VTerminal" />
+        <activity android:name="com.vterminal.TermuxActivity" android:exported="false" android:theme="@style/Theme.VTerminal" />
 
     </application>
 </manifest>
