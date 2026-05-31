@@ -69,8 +69,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun browseImageFile() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
-        startActivityForResult(intent, pickFileCode)
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }, pickFileCode)
     }
 
     private fun requestAllPermissions() {
@@ -89,10 +88,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkManageStorage() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                startActivityForResult(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply { data = Uri.parse("package:$packageName") }, manageStorageCode)
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            startActivityForResult(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply { data = Uri.parse("package:$packageName") }, manageStorageCode)
         }
     }
 
@@ -125,17 +122,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun showNotification() {
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val n = NotificationCompat.Builder(this, channelId).setContentTitle("V-Terminal Pro").setContentText("Ubuntu session is running").setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true).setContentIntent(pi).build()
-        getSystemService(NotificationManager::class.java).notify(notificationId, n)
+        getSystemService(NotificationManager::class.java).notify(notificationId, NotificationCompat.Builder(this, channelId).setContentTitle("V-Terminal Pro").setContentText("Ubuntu session is running").setSmallIcon(android.R.drawable.ic_dialog_info).setOngoing(true).setContentIntent(pi).build())
     }
 
-    private fun showProgress(text: String, progress: Int) {
-        runOnUiThread { progressLayout.visibility = View.VISIBLE; progressText.text = "$text ($progress%)"; progressBar.progress = progress }
-    }
-
+    private fun showProgress(text: String, progress: Int) { runOnUiThread { progressLayout.visibility = View.VISIBLE; progressText.text = "$text ($progress%)"; progressBar.progress = progress } }
     private fun hideProgress() { runOnUiThread { progressLayout.visibility = View.GONE } }
-
     private fun cancelExtraction() { extractThread?.interrupt(); extractProcess?.destroy(); hideProgress(); appendOutput("[CANCEL] Extraction cancelled.\n") }
+
+    // اكتشاف نوع الملف واختيار أمر فك الضغط المناسب
+    private fun getTarCommand(fileName: String): String {
+        return when {
+            fileName.endsWith(".tar.gz") || fileName.endsWith(".tgz") -> "tar -xzf"
+            fileName.endsWith(".tar.xz") || fileName.endsWith(".txz") -> "tar -xJf"
+            fileName.endsWith(".tar.bz2") || fileName.endsWith(".tbz2") -> "tar -xjf"
+            fileName.endsWith(".tar") -> "tar -xf"
+            fileName.endsWith(".zip") -> "unzip -o"
+            fileName.endsWith(".rar") -> "unrar x -y"
+            else -> "tar -xf" // افتراضي
+        }
+    }
 
     private fun initUbuntu() {
         appendOutput("[INIT] Initializing Ubuntu...\n")
@@ -159,15 +164,20 @@ class MainActivity : AppCompatActivity() {
                         val defaultImage = File("${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-correct.tar")
                         if (defaultImage.exists()) imageUri = Uri.fromFile(defaultImage)
                         else {
-                            appendOutput("[ERROR] No image selected. Tap [BROWSE] to choose Ubuntu archive.\n")
+                            appendOutput("[ERROR] No image selected. Tap [BROWSE] to choose archive.\n")
                             hideProgress(); return@Thread
                         }
                     }
 
                     val uri = imageUri!!
-                    val tempImage = File("${cacheDir}/rootfs.tar")
-                    appendOutput("[COPY] Copying image to internal storage...\n")
-                    showProgress("Copying image...", 0)
+                    val fileName = uri.lastPathSegment ?: "archive.tar"
+                    val tarCmd = getTarCommand(fileName)
+                    appendOutput("[DETECT] File type: $fileName\n")
+                    appendOutput("[DETECT] Command: $tarCmd\n")
+
+                    val tempImage = File("${cacheDir}/archive")
+                    appendOutput("[COPY] Copying archive to internal storage...\n")
+                    showProgress("Copying...", 0)
                     val totalSize = contentResolver.openFileDescriptor(uri, "r")!!.statSize
                     var copied = 0L
                     contentResolver.openInputStream(uri)!!.use { input ->
@@ -181,7 +191,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     appendOutput("[COPY] Done.\n")
 
-                    appendOutput("[EXTRACT] Extracting Ubuntu...\n")
+                    appendOutput("[EXTRACT] Extracting...\n")
                     ubuntuDir.mkdirs()
                     showProgress("Counting files...", 15)
                     val countPb = ProcessBuilder(busyboxPath, "tar", "-tf", tempImage.absolutePath)
@@ -191,7 +201,12 @@ class MainActivity : AppCompatActivity() {
                     appendOutput("[EXTRACT] Total files: $totalFiles\n")
 
                     showProgress("Extracting... 0/$totalFiles", 15)
-                    val extractPb = ProcessBuilder(busyboxPath, "tar", "-xf", tempImage.absolutePath, "-C", ubuntuPath)
+                    // استخدام الأمر المناسب لفك الضغط
+                    val cmdList = tarCmd.split(" ").toMutableList()
+                    cmdList.add(tempImage.absolutePath)
+                    cmdList.add("-C")
+                    cmdList.add(ubuntuPath)
+                    val extractPb = ProcessBuilder(busyboxPath, *cmdList.toTypedArray())
                     extractPb.redirectErrorStream(true); extractProcess = extractPb.start()
                     var currentFile = 0
                     extractProcess!!.inputStream.bufferedReader().forEachLine { line ->
@@ -204,7 +219,7 @@ class MainActivity : AppCompatActivity() {
                     showProgress("Verifying...", 95)
                     val bashExists = File("$ubuntuPath/bin/bash").exists()
                     appendOutput("[VERIFY] bash: $bashExists\n")
-                    if (!bashExists) { hideProgress(); appendOutput("[ERROR] bash not found. Try another archive.\n"); return@Thread }
+                    if (!bashExists) { hideProgress(); appendOutput("[ERROR] bash not found.\n"); return@Thread }
                     showProgress("Complete", 100)
                 }
 
@@ -220,10 +235,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun copyAsset(name: String, dest: String) { val f = File(dest); if (f.exists() && f.length() > 100000) return; try { assets.open(name).use { input -> FileOutputStream(f).use { output -> input.copyTo(output); output.flush(); output.fd.sync() } } } catch (e: Exception) { appendOutput("[COPY ERROR] ${e.message}\n") } }
-
     private fun sendCommand() { val cmd = terminalInput.text.toString(); if (cmd.isNotEmpty() && shellInput != null) { try { shellInput!!.write("$cmd\n".toByteArray()); shellInput!!.flush(); terminalInput.text.clear() } catch (e: Exception) { appendOutput("[SEND ERROR] ${e.message}\n") } } }
-
     private fun appendOutput(text: String) { runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } } }
-
     override fun onDestroy() { super.onDestroy(); shellProcess?.destroy(); shellOutput?.interrupt() }
 }
