@@ -103,50 +103,88 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initUbuntu() {
-        appendOutput("\n🚀 Initializing Ubuntu...\n")
+        appendOutput("\n[INIT] Initializing Ubuntu...\n")
         Thread {
             try {
-                val prootPath = "${filesDir}/proot"; val busyboxPath = "${filesDir}/busybox"
-                val ubuntuPath = "${filesDir}/ubuntu"; val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
+                // استخدام cacheDir لتجنب مشاكل noexec
+                val cacheDir = cacheDir
+                val prootPath = "${cacheDir}/proot"
+                val busyboxPath = "${cacheDir}/busybox"
+                val ubuntuPath = "${filesDir}/ubuntu"
+                val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
 
-                // نسخ الأدوات مع sync لتجنب Text file busy
-                copyAsset("proot", prootPath); copyAsset("busybox", busyboxPath)
+                // نسخ الأدوات إلى cache/
+                copyAsset("proot", prootPath)
+                copyAsset("busybox", busyboxPath)
+                
+                // انتظار sync للتأكد من إغلاق الملفات
                 Runtime.getRuntime().exec("sync").waitFor()
-                File(prootPath).setExecutable(true); File(busyboxPath).setExecutable(true)
+                Thread.sleep(200)
+                
+                // chmod 755 صريح
+                Runtime.getRuntime().exec("chmod 755 $prootPath").waitFor()
+                Runtime.getRuntime().exec("chmod 755 $busyboxPath").waitFor()
+                File(prootPath).setExecutable(true, false)
+                File(busyboxPath).setExecutable(true, false)
 
                 val ubuntuDir = File(ubuntuPath)
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
-                    appendOutput("📦 Extracting Ubuntu...\n"); ubuntuDir.mkdirs()
+                    appendOutput("[EXTRACT] Extracting Ubuntu...\n")
+                    ubuntuDir.mkdirs()
                     val pb = ProcessBuilder(busyboxPath, "tar", "-xzf", imagePath, "-C", ubuntuPath)
-                    pb.redirectErrorStream(true); val p = pb.start()
-                    p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }; p.waitFor()
-                    appendOutput("✅ Extraction complete.\n")
+                    pb.redirectErrorStream(true)
+                    val p = pb.start()
+                    p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
+                    p.waitFor()
+                    // انتظار إضافي بعد فك الضغط
+                    Runtime.getRuntime().exec("sync").waitFor()
+                    Thread.sleep(500)
+                    appendOutput("[EXTRACT] Done.\n")
                 }
 
-                appendOutput("🐚 Starting shell...\n")
+                appendOutput("[SHELL] Starting bash...\n")
                 val pb = ProcessBuilder(prootPath, "-r", ubuntuPath, "-b", "/dev", "-b", "/proc", "-b", "/sys", "/bin/bash")
-                pb.redirectErrorStream(true); shellProcess = pb.start(); shellInput = shellProcess!!.outputStream
+                pb.redirectErrorStream(true)
+                shellProcess = pb.start()
+                shellInput = shellProcess!!.outputStream
                 runOnUiThread { showNotification() }
-                shellOutput = Thread { shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") } }.apply { start() }
-                appendOutput("✨ Ubuntu Shell Ready.\n\n")
-            } catch (e: Exception) { appendOutput("❌ Error: ${e.message}\n") }
+                shellOutput = Thread {
+                    shellProcess!!.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
+                }.apply { start() }
+                appendOutput("[SHELL] Ubuntu Shell Ready.\n\n")
+            } catch (e: Exception) {
+                appendOutput("[ERROR] ${e.message}\n")
+            }
         }.start()
     }
 
     private fun copyAsset(name: String, dest: String) {
-        val f = File(dest); if (f.exists() && f.length() > 100000) return
-        try { assets.open(name).use { it.copyTo(FileOutputStream(f)) } } catch (e: Exception) { appendOutput("Copy error: ${e.message}\n") }
+        val f = File(dest)
+        if (f.exists() && f.length() > 100000) return
+        try {
+            assets.open(name).use { input ->
+                FileOutputStream(f).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                    output.fd.sync() // تأكيد كتابة القرص
+                }
+            }
+        } catch (e: Exception) {
+            appendOutput("[COPY ERROR] ${e.message}\n")
+        }
     }
 
     private fun sendCommand() {
         val cmd = terminalInput.text.toString()
         if (cmd.isNotEmpty() && shellInput != null) {
             try { shellInput!!.write("$cmd\n".toByteArray()); shellInput!!.flush(); terminalInput.text.clear() }
-            catch (e: Exception) { appendOutput("Send error: ${e.message}\n") }
+            catch (e: Exception) { appendOutput("[SEND ERROR] ${e.message}\n") }
         }
     }
 
-    private fun appendOutput(text: String) { runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } } }
+    private fun appendOutput(text: String) {
+        runOnUiThread { terminalOutput.append(text); scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) } }
+    }
 
     override fun onDestroy() { super.onDestroy(); shellProcess?.destroy(); shellOutput?.interrupt() }
 }
