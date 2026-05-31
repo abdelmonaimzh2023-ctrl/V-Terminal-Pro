@@ -22,8 +22,16 @@
             android:text="V-TERMINAL PRO"
             android:textColor="#FF00FFCC"
             android:textSize="13sp"
-            android:fontFamily="monospace"
-            android:letterSpacing="0.1" />
+            android:fontFamily="monospace" />
+
+        <Button
+            android:id="@+id/browseBtn"
+            android:layout_width="40dp"
+            android:layout_height="36dp"
+            android:text="..."
+            android:textColor="#FFFFCC00"
+            android:background="@android:color/transparent"
+            android:textSize="20sp" />
 
         <Button
             android:id="@+id/settingsBtn"
@@ -35,7 +43,6 @@
             android:textSize="22sp" />
     </LinearLayout>
 
-    <!-- Progress bar layout -->
     <LinearLayout
         android:id="@+id/progressLayout"
         android:layout_width="match_parent"

@@ -1,9 +1,7 @@
 package com.vterminal
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 
@@ -21,26 +19,13 @@ class SettingsActivity : AppCompatActivity() {
         btn("Termux Integrated") { startActivity(Intent(this, TermuxActivity::class.java)) }
         btn("V-Viewer (GPU Desktop)") { Toast.makeText(this, "Coming soon", Toast.LENGTH_SHORT).show() }
 
-        section("CONNECTIVITY")
-        btn("WiFi Settings") { startActivity(Intent(Settings.ACTION_WIFI_SETTINGS)) }
-        btn("Bluetooth Settings") { startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
-        btn("Network & Internet") { startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS)) }
-
         section("DEVICE")
-        btn("Camera Preview") {
-            val intent = Intent("android.media.action.IMAGE_CAPTURE")
-            if (intent.resolveActivity(packageManager) != null) startActivity(intent)
-            else Toast.makeText(this, "No camera app found", Toast.LENGTH_SHORT).show()
-        }
-        btn("Manage All Files") {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply { data = Uri.parse("package:$packageName") })
-            }
-        }
-        btn("Developer Options") { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
+        btn("Camera") { startActivity(Intent("android.media.action.IMAGE_CAPTURE")) }
+        btn("Location Settings") { startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+        btn("Developer Options") { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
 
         section("ABOUT")
-        btn("V-Terminal Pro v1.0") { Toast.makeText(this, "Terminal & Ubuntu • Termux Integrated • GPU Viewer\n2026", Toast.LENGTH_LONG).show() }
+        btn("V-Terminal Pro v1.0") { Toast.makeText(this, "Terminal & Ubuntu • Termux Integrated\n2026", Toast.LENGTH_LONG).show() }
 
         scroll.addView(layout); setContentView(scroll)
     }
