@@ -115,6 +115,7 @@ class MainActivity : AppCompatActivity() {
                 val ubuntuPath = "${filesDir}/ubuntu"
                 val imagePath = "${Environment.getExternalStorageDirectory()}/V-Viewer/rootfs-full.tar"
 
+                // نسخ الأدوات
                 copyAsset("proot", prootPath)
                 copyAsset("busybox", busyboxPath)
                 Runtime.getRuntime().exec("sync").waitFor()
@@ -128,14 +129,23 @@ class MainActivity : AppCompatActivity() {
                 if (!ubuntuDir.exists() || !File("$ubuntuPath/bin/bash").exists()) {
                     appendOutput("[EXTRACT] Extracting Ubuntu...\n")
                     ubuntuDir.mkdirs()
-                    val pb = ProcessBuilder(busyboxPath, "tar", "-xzf", imagePath, "-C", ubuntuPath)
+                    // [FIX] استخدام -xf بدلاً من -xzf لأن الملف .tar وليس .tar.gz
+                    val pb = ProcessBuilder(busyboxPath, "tar", "-xf", imagePath, "-C", ubuntuPath)
                     pb.redirectErrorStream(true)
                     val p = pb.start()
                     p.inputStream.bufferedReader().forEachLine { appendOutput("$it\n") }
-                    p.waitFor()
+                    val exitCode = p.waitFor()
+                    appendOutput("[EXTRACT] Exit code: $exitCode\n")
                     Runtime.getRuntime().exec("sync").waitFor()
                     Thread.sleep(500)
-                    appendOutput("[EXTRACT] Done.\n")
+                    
+                    // التحقق من وجود bash بعد فك الضغط
+                    if (File("$ubuntuPath/bin/bash").exists()) {
+                        appendOutput("[EXTRACT] bash found. Done.\n")
+                    } else {
+                        appendOutput("[EXTRACT] ERROR: bash not found. Archive may be invalid.\n")
+                        return@Thread
+                    }
                 }
 
                 appendOutput("[SHELL] Starting bash...\n")
